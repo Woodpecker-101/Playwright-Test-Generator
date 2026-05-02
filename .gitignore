@@ -1,0 +1,34 @@
+# Node.js dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+
+# Playwright test cache
+test-results/
+playwright-report/
+
+# Dependency directories from package managers
+.pnp/
+.pnp.js

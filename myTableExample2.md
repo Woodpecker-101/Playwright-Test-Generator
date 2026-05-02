@@ -1,0 +1,8 @@
+| Feature Name     | Scenario Name      | Test Name                             | Flow Name                              | Step Name                              | Page Name           | Target                          |
+|------------------|--------------------|---------------------------------------|----------------------------------------|----------------------------------------|---------------------|---------------------------------|
+| Notes management | Add special notes  | Display error message for empty notes | navigate to the page Notes management  | select language                        | Main page           | language                        |
+|                  |                    |                                       | navigate to the page Notes management  | search a member                        | Main page           | member                          |
+|                  |                    |                                       | navigate to the page Notes management  | click link Notes management page       | Main page           | link Notes management page      |
+|                  |                    |                                       | add empty special notes                | click button Add special notes         | Notes management    | button Add special notes        |
+|                  |                    |                                       | add empty special notes                | click button Submit special notes      | Add special notes   | button Submit special notes     |
+|                  |                    |                                       |                                        | validate error message                 | Add special notes   | error message                   |
