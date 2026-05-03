@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { mapStepsToPages } from './generate-pages.js';
 import { toCamelCase, toPascalCase, toKebabCase, logInfo, logWarn, logError, safeReadFile, safeWriteFile } from './utils.js';
-import { log } from 'console';
 
 /**
  * Generates action files for each page based on the provided steps.
@@ -11,7 +10,6 @@ import { log } from 'console';
  * @returns {void}
  */
 export const generateActions = (featureDir, steps) => {
-
   if (!featureDir || typeof featureDir !== 'string') {
     logError('Invalid or missing featureDir in generateActions:', featureDir);
     return;
@@ -22,7 +20,6 @@ export const generateActions = (featureDir, steps) => {
   }
 
   const pagesWithSteps = mapStepsToPages(steps);
-
   if (!pagesWithSteps || pagesWithSteps.length === 0) {
     logError('No pages provided for action generation.');
     return;
@@ -41,6 +38,15 @@ export const generateActions = (featureDir, steps) => {
     return map;
   }, {});
 
+  // Helper to extract existing action function names from the content of an action file
+  const extractExistingActionNames = (content) => {
+    const matches = content.match(/async (\w+)\s*\(/g) || [];
+    return matches.map(line => {
+      const match = line.match(/async (\w+)\s*\(/);
+      return match ? match[1] : null;
+    }).filter(Boolean);
+  };
+
   pagesWithSteps.forEach(page => {
     logInfo(`Processing page: "${page.name}" with steps: ${JSON.stringify(page.steps)}`);
     if (!page.name || !page.steps) {
@@ -48,101 +54,43 @@ export const generateActions = (featureDir, steps) => {
       return;
     }
     const actionFilePath = path.join(actionsDir, `${toKebabCase(page.name)}.action.ts`);
-
     let existingContent = '';
+      if (fs.existsSync(actionFilePath)) {
+        existingContent = safeReadFile(actionFilePath);
+      }
 
-    if (!fs.existsSync(actionFilePath)) {
-      // If the file doesn't exist
       const uniqueSteps = [...new Set(page.steps)];
-      const newActions = uniqueSteps.filter(step => {
-        const actionFunction = `${toCamelCase(step)}`;
-        return !existingContent.includes(actionFunction);
-      });
+      const existingActionNames = extractExistingActionNames(existingContent);
+      const newActions = uniqueSteps.filter(step => !existingActionNames.includes(toCamelCase(step)));
 
       if (newActions.length === 0) {
         logWarn(`No new actions to add for page: ${page.name}`);
         return;
       }
 
-      const existingActionsMatch = existingContent.match(/export class \w+ \{([\s\S]*?)\}/);
-      const existingActions = existingActionsMatch ? existingActionsMatch[1].trim() : '';
-
-      // Filter newActions to only include steps that are not already in the action file
-      const existingActionFunctions = existingContent.match(/async (\w+)\s*\(/g) || [];
-      const existingActionNames = existingActionFunctions.map(actionLine => {
-        const match = actionLine.match(/async (\w+)\s*\(/);
-        return match ? match[1] : null;
-      }).filter(Boolean);
-
-      const filteredNewActions = newActions.filter(step => !existingActionNames.includes(toCamelCase(step)));
-
-      const addedActions = filteredNewActions.map(step => {
-        const target = stepTargetMap[step] || 'defaultSelector';
-
-        return `  async ${toCamelCase(step)}() {
-    await ${toPascalCase(page.name)}Page.${toCamelCase(target)}(this.page).click();
-  }`;
-      }).join('\n\n');
-      const updatedActions = existingActions ? `${existingActions}\n\n${addedActions}` : addedActions;
-
-      const actionContent = `import { Page } from '@playwright/test';
-import { ${toPascalCase(page.name)}Page } from '../pages/${toKebabCase(page.name)}.page';
-
-export class ${toPascalCase(page.name)}Action {
-  page: Page;
-  constructor(page: Page) {
-    this.page = page;
-  }
-
-${updatedActions}
-}`;
-
-      safeWriteFile(actionFilePath, actionContent);
-      logInfo(`Updated action file: ${actionFilePath}`);
-    } else {
-      // If the file exists, read its content to check for existing actions
-      existingContent = safeReadFile(actionFilePath);
-      const uniqueSteps = [...new Set(page.steps)];
-      const newActions = uniqueSteps.filter(step => {
-        const actionFunction = `  async ${toCamelCase(step)}() {`;
-        return !existingContent.includes(actionFunction);
-      });
-
-      if (newActions.length === 0) {
-        logWarn(`No new actions to add for page: ${page.name}`);
-        return;
-      }
-
+      // Extract existing actions body if present
       const existingActionsMatch = existingContent.match(/export class \w+ \{([\s\S]*)\}/);
       const existingActions = existingActionsMatch ? existingActionsMatch[1].trim() : '';
 
-      // Filter newActions to only include steps that are not already in the action file
-      const existingActionFunctions = existingContent.match(/async (\w+)\s*\(/g) || [];
-      const existingActionNames = existingActionFunctions.map(actionLine => {
-        const match = actionLine.match(/async (\w+)\s*\(/);
-        return match ? match[1] : null;
-      }).filter(Boolean);
-
-      const filteredNewActions = newActions.filter(step => !existingActionNames.includes(toCamelCase(step)));
-
-      const addedActions = filteredNewActions.map(step => {
+      const addedActions = newActions.map(step => {
         const target = stepTargetMap[step] || 'defaultSelector';
-
-        return `  async ${toCamelCase(step)}() {
-    await ${toPascalCase(page.name)}Page.${toCamelCase(target)}(this.page).click();
-  }`;
+        return `  async ${toCamelCase(step)}() {\n    await ${toPascalCase(page.name)}Page.${toCamelCase(target)}(this.page).click();\n  }`;
       }).join('\n\n');
 
-      const updatedActions = existingActions ? `${existingActions}\n\n${addedActions}` : addedActions;
-      const actionContent = `import { Page } from '@playwright/test';
-import { ${toPascalCase(page.name)}Page } from '../pages/${toKebabCase(page.name)}.page';
-
-export class ${toPascalCase(page.name)}Action {
-  ${updatedActions}
-}`;
+      // if the file exists, preserve the constructor and page property, otherwise add them
+      let actionContent;
+      if (!fs.existsSync(actionFilePath)) {
+        actionContent = `import { Page } from '@playwright/test';\nimport { ${toPascalCase(page.name)}Page } from '../pages/${toKebabCase(page.name)}.page';\n\nexport class ${toPascalCase(page.name)}Action {\n  page: Page;\n  constructor(page: Page) {\n    this.page = page;\n  }\n\n${addedActions}\n}`;
+      } else {
+        // Try to preserve the page property and constructor if present
+        const pagePropMatch = existingContent.match(/(\s*page:\s*Page;)/);
+        const constructorMatch = existingContent.match(/(\s*constructor\([\s\S]*?\}\s*)/);
+        const pageProp = pagePropMatch ? pagePropMatch[1] : '  page: Page;';
+        const constructor = constructorMatch ? constructorMatch[1] : '  constructor(page: Page) {\n    this.page = page;\n  }';
+        actionContent = `import { Page } from '@playwright/test';\nimport { ${toPascalCase(page.name)}Page } from '../pages/${toKebabCase(page.name)}.page';\n\nexport class ${toPascalCase(page.name)}Action {\n  ${existingActions ? existingActions + '\n\n' : ''}${addedActions}\n}`;      
+      }
 
       safeWriteFile(actionFilePath, actionContent);
       logInfo(`Updated action file: ${actionFilePath}`);
-    }
   });
 };
